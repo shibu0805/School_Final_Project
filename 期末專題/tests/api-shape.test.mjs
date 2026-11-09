@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {extractStationRecords,normalize} from '../server/data.mjs';
+import {observationTime,stationQuality} from '../shared/air-quality.mjs';
+const row={sitename:'固定測試站',county:'臺中市',aqi:'80',publishtime:'2026-11-07 00:00:00'};
+test('環境部頂層陣列格式可正規化為測站',()=>{const records=extractStationRecords([row]);assert.equal(normalize(records[0]).aqi,80);});
+test('保留相容環境部 records 包裝格式',()=>assert.deepEqual(extractStationRecords({records:[row]}),[row]));
+test('空資料與錯誤物件不當作有效測站',()=>{for(const body of [[],{records:[]},{error:'unauthorized'},null,undefined])assert.throws(()=>extractStationRecords(body),/未回傳測站資料/);});
+test('環境部斜線日期以臺灣時區正確解析',()=>{const r=normalize({...row,publishtime:'2026/11/07 15:00:00'},Date.parse('2026-11-07T07:30:00Z'));assert.equal(r.time,'2026-11-07 15:00:00');assert.equal(r.stale,false);assert.equal(observationTime('2026/11/07 15:00:00'),Date.parse('2026-11-07T07:00:00Z'));});
+test('原始斜線發布時間不誤判為時間無效',()=>assert.equal(stationQuality({mode:'live',aqi:80,time:'2026/11/07 15:00:00'},'live',Date.parse('2026-11-07T07:30:00Z')),'valid'));

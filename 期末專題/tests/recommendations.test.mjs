@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {generateRecommendations} from '../server/recommendations.mjs';
+import {get_health_guidelines,assessActivity} from '../server/guidelines.mjs';
+import {runAgent} from '../server/agent.mjs';
+const profile={county:'臺中市',activity:'跑步',group:'一般民眾',intensity:'高',duration:30,time:'現在'};
+const station={aqi:120,pollutant:'PM2.5',stale:false};
+function recommend(message,p=profile,s=station,extra={}){return generateRecommendations({message,profile:p,station:s,assessment:assessActivity(s,p),guideline:get_health_guidelines(s.aqi,p.group),...extra});}
+test('跑步與散步依不同活動產生不同做法',()=>{const running=recommend('適合跑步嗎？'),walking=recommend('適合散步嗎？',{...profile,activity:'散步',intensity:'低'});assert.notDeepEqual(running.actions,walking.actions);assert(running.actions.some(s=>s.includes('慢跑或步行')));assert(walking.actions.some(s=>s.includes('輕鬆步調')));});
+test('相同 AQI 下氣喘族群獲得不同建議',()=>{const a=recommend('適合跑步嗎？'),b=recommend('我有氣喘，適合跑步嗎？',{...profile,group:'心肺疾病敏感族群'});assert.notDeepEqual(a.actions,b.actions);assert(b.actions.some(s=>s.includes('原有醫療')));});
+test('問口罩優先回答口罩限制而非固定運動三句',()=>{const r=recommend('現在出門要戴口罩嗎？');assert(r.recommendations[0].id==='mask-limits');assert(r.actions.some(s=>s.includes('氣體污染物')));assert(r.recommendations.every(s=>s.source));});
+test('臭氧與懸浮微粒各有不同防護重點',()=>{const particles=recommend('適合出去嗎？'),ozone=recommend('適合出去嗎？',profile,{...station,pollutant:'O3'});assert.notDeepEqual(particles.actions,ozone.actions);assert(ozone.actions.some(s=>s.includes('臭氧')));});
+test('詢問替代活動時給出對應活動備案',()=>{const cycling=recommend('可以改成什麼室內活動？',{...profile,activity:'騎腳踏車'});assert(cycling.actions.some(s=>s.includes('固定式腳踏車')));assert(cycling.actions.some(s=>s.includes('室內也要留意空品')));});
+test('兒童戶外遊戲有兒童與遊戲調整建議',()=>{const r=recommend('小孩適合去公園玩嗎？',{...profile,activity:'戶外遊戲',group:'兒童',intensity:'中'});assert(r.actions.some(s=>s.includes('照顧者')));assert(r.actions.some(s=>s.includes('遊戲')));});
+test('長時間計畫加入暴露期間與拆分活動說明',()=>{const r=recommend('可以跑久一點嗎？',{...profile,duration:90});assert(r.actions.some(s=>s.includes('活動時間較長')));});
+test('只有取得天氣資料時才引用降雨可能',()=>{const r=recommend('下雨還能跑步嗎？',profile,station,{weather:{status:'live',periods:[{description:'多雲短暫雨',pop:60}]}});assert(r.actions.some(s=>s.includes('預報包含降雨可能')));const missing=recommend('下雨還能跑步嗎？');assert(missing.actions.some(s=>s.includes('沒有取得天氣預報')));assert(!missing.actions.some(s=>s.includes('預報包含降雨可能')));});
+test('未來不足不給現在適合的結論，也不造最佳時間',()=>{const r=recommend('明天幾點適合跑步？',profile,station,{assessment:{status:'insufficient'},future:true});assert(r.actions.some(s=>s.includes('沒有可信的未來')));assert(!r.actions.some(s=>s.includes('可依原定')));});
+test('缺值只給補充資料與防護限制，不捏造污染物',()=>{const r=recommend('空品沒資料還要戴口罩嗎？',profile,{...station,aqi:null,pollutant:null},{assessment:{status:'insufficient'}});assert(r.actions.some(s=>s.includes('沒有可靠')));assert(!r.actions.some(s=>s.includes('這次指標污染物')));});
+test('相同輸入可重現，每次最多三點且不重複',()=>{const a=recommend('現在可以跑步嗎？');assert.deepEqual(a,recommend('現在可以跑步嗎？'));assert(a.actions.length<=3);assert.equal(new Set(a.actions).size,a.actions.length);assert(a.recommendations.every(r=>r.reason&&r.source&&r.kind));});
+test('整合 Agent 問跑步、口罩與替代活動會改變建議並通過驗證',async()=>{const a=await runAgent({mode:'demo',profile,message:'現在適合跑步嗎？'}),b=await runAgent({mode:'demo',profile,message:'現在出門要戴口罩嗎？'}),c=await runAgent({mode:'demo',profile,message:'可以改成什麼室內活動？'});assert.notDeepEqual(a.actions,b.actions);assert.notDeepEqual(b.actions,c.actions);for(const r of [a,b,c]){assert(r.validation.passed);assert(r.trace.some(t=>t.name==='generate_recommendations'));assert.equal(r.details.recommendations.length,r.actions.length);}});

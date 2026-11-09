@@ -1,0 +1,9 @@
+export const countyNames:string[];
+export const aqiLevels:{min:number;max:number;label:string;color:string}[];
+export const noData:{label:string;color:string};
+export const countyRule:string;
+export function aqiGrade(aqi:unknown):{label:string;color:string};
+export function validAqi(aqi:unknown):boolean;
+export function observationTime(time:unknown):number;
+export function stationQuality(station:any,mode?:string,now?:number):string;
+export function summarizeCounties(stations:any[],options?:{mode?:string;now?:number}):any[];
