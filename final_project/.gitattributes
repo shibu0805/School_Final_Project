@@ -1,0 +1,2 @@
+# Preserve source bytes for the GeoJSON SHA256 check.
+/public/geo/taiwan-counties.geojson -text

@@ -2,6 +2,41 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseIntent,runAgent} from '../server/agent.mjs';
 const previous={county:'臺中市',activity:'跑步',group:'一般民眾',intensity:'高',duration:30,time:'明天',timeDetail:'早上'};
+test('有效問題之後輸入亂碼或離題文字，不重播舊評估，之後仍能正常追問',async()=>{
+ const first=await runAgent({message:'今天台中適合跑步嗎？',mode:'demo',profile:{}});
+ assert.equal(first.status,'ok');
+ for(const message of ['\\qqq','asdfghjkl','123456','！？！？','哈哈哈哈','那 qwerty 呢？','如果 zxcasd 呢？','今天晚餐吃什麼？','台中有哪些餐廳？','幫我寫一個迴圈']){
+  const profile=structuredClone(first.profile);
+  const result=await runAgent({message,mode:'demo',profile});
+  assert.equal(result.status,'clarification',message);assert.equal(result.clarificationReason,'unrecognized_message',message);
+  assert.notEqual(result.reply,first.reply);assert(result.reply.includes('沒有理解'));
+  assert.deepEqual(result.profile,first.profile);assert.deepEqual(profile,first.profile);
+  assert.equal(result.trace.length,0);assert.deepEqual(result.actions,[]);
+  assert.equal(result.summary,undefined);assert.equal(result.facts,undefined);assert.equal(result.runId,undefined);
+  const followup=await runAgent({message:'那如果我是氣喘患者呢？',mode:'demo',profile:result.profile});
+  assert.equal(followup.status,'ok');assert.equal(followup.profile.county,first.profile.county);
+  assert.equal(followup.profile.activity,first.profile.activity);assert.equal(followup.profile.time,first.profile.time);
+  assert.equal(followup.profile.group,'心肺疾病敏感族群');
+ }
+});
+test('無法辨識的本輪不呼叫 Gemini、Ollama 或即時資料，也不清除舊的未來時段',async t=>{
+ const network=t.mock.method(globalThis,'fetch',async()=>{throw Error('不應發出請求');});
+ for(const provider of ['rules','gemini','ollama']){
+  const result=await runAgent({message:'qazwsxedc',profile:previous,mode:'live',provider});
+  assert.equal(result.status,'clarification');assert.deepEqual(result.profile,previous);assert.equal(result.trace.length,0);
+ }
+ assert.equal(network.mock.callCount(),0);
+});
+test('簡短地點、時段、時長與評估追問仍能沿用對話',async()=>{
+ for(const message of ['那台北呢？','那明天下午呢？','那改成 15 分鐘呢？','那可以嗎？']){
+  const result=await runAgent({message,mode:'demo',profile:{...previous,time:'現在',timeDetail:undefined}});
+  assert.notEqual(result.status,'clarification',message);assert(result.trace.some(t=>t.name==='get_realtime_aqi'));
+ }
+ const first=await runAgent({message:'台中',mode:'demo',profile:{}});
+ assert.notEqual(first.status,'clarification');assert.equal(first.profile.county,'臺中市');
+ const unknown=await runAgent({message:'asdfghjkl',mode:'demo',profile:{}});
+ assert.equal(unknown.status,'clarification');assert.deepEqual(unknown.profile,{});
+});
 test('明天早上之後重新問今天，清除舊的早上條件',()=>{const p=parseIntent('今天台中適合跑步嗎？',previous);assert.equal(p.time,'今天');assert.equal(p.timeDetail,undefined);});
 test('現在與目前都能取消前一輪的未來時段',()=>{for(const text of ['改成現在，台中適合散步嗎？','目前台中適合出去跑步嗎？']){const p=parseIntent(text,previous);assert.equal(p.time,'現在');assert.equal(p.timeDetail,undefined);}});
 test('完整的新問題未寫時間時預設現在，不沿用明天',()=>{const p=parseIntent('台北適合散步嗎？',previous);assert.equal(p.county,'臺北市');assert.equal(p.activity,'散步');assert.equal(p.time,'現在');assert.equal(p.timeDetail,undefined);});

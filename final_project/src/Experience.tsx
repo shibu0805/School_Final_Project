@@ -3,6 +3,7 @@ import {aqiLevels,countyNames,countyRule,summarizeCounties,aqiGrade,observationT
 import {TaiwanMap} from './TaiwanMap';
 import {useSpeech} from './speech';
 import type {County,Profile,Result,Station} from './types';
+import {isAirQualityMessage,unrecognizedMessage} from '../shared/message-intent.mjs';
 import './experience.css';
 const Research=lazy(()=>import('./ResearchApp').then(m=>({default:m.App})));
 const EvidenceChart=lazy(()=>import('./EvidenceChart'));
@@ -44,7 +45,14 @@ function Answer({result}:{result:Result}){
 function Advisor({profile,onProfile,mode,provider}:{profile:Profile;onProfile:(p:Profile)=>void;mode:string;provider:string}){
  const [question,setQuestion]=useState(''),[pendingQuestion,setPendingQuestion]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[conversation,setConversation]=useState<{question:string;result:Result}[]>([]);const busyRef=useRef(false),controller=useRef<AbortController|null>(null),historyRef=useRef<HTMLDivElement|null>(null);const last=conversation.at(-1);
  const speech=useSpeech(text=>{setQuestion(text);void submit(text);});
- async function submit(text=question){if(!text.trim()||busyRef.current)return;busyRef.current=true;setPendingQuestion(text);setBusy(true);setError('');speech.stopListening();speech.stopSpeaking();const abort=new AbortController();controller.current=abort;
+ async function submit(text=question){if(!text.trim()||busyRef.current)return;
+  // 前端也先攔截，避免舊後端或混合部署將亂碼當成上一題的評估。
+  if(!isAirQualityMessage(text,profile)){
+   speech.stopListening();speech.stopSpeaking();setError('');setPendingQuestion(text);
+   const result:Result={...unrecognizedMessage(profile),mode,provider:'rules',trace:[]};
+   setConversation(v=>[...v,{question:text,result}]);setQuestion('');return;
+  }
+  busyRef.current=true;setPendingQuestion(text);setBusy(true);setError('');speech.stopListening();speech.stopSpeaking();const abort=new AbortController();controller.current=abort;
   try{const result:Result=await api('chat',{method:'POST',headers:{'content-type':'application/json'},signal:abort.signal,body:JSON.stringify({message:text,profile,mode,provider})});if(abort.signal.aborted)return;onProfile(result.profile);setConversation(v=>[...v,{question:text,result}]);setQuestion('');}catch(e){if(!abort.signal.aborted)setError((e as Error).message);}finally{if(!abort.signal.aborted){setBusy(false);busyRef.current=false;}}
  }
  useEffect(()=>()=>{controller.current?.abort();},[]);
@@ -59,7 +67,7 @@ function Advisor({profile,onProfile,mode,provider}:{profile:Profile;onProfile:(p
   <div className="aw-chat-history" ref={historyRef} role="region" aria-label="聊天紀錄" tabIndex={0}>
    {conversation.map((entry,index)=><div className="aw-last-answer aw-chat-turn" key={index}>
     <div className="aw-user-question"><span>你</span><p>{entry.question}</p></div>
-    <div className="aw-answer-toolbar"><span>本次條件{entry.result.profile.county?' '+entry.result.profile.county:''}{entry.result.profile.activity?' · '+entry.result.profile.activity:''}{entry.result.profile.time?' · '+entry.result.profile.time:''}{entry.result.profile.group?' · '+entry.result.profile.group:''}</span>{index===conversation.length-1&&<button disabled={!speech.canSpeak} onClick={()=>speech.speaking?speech.stopSpeaking():speech.speak(entry.result.reply)}><Glyph name={speech.speaking?'stop':'speaker'} size={16}/>{speech.speaking?'停止朗讀':'朗讀回答'}</button>}</div>
+    <div className="aw-answer-toolbar"><span>{entry.result.status==='clarification'?'待補充問題':<>本次條件{entry.result.profile.county?' '+entry.result.profile.county:''}{entry.result.profile.activity?' · '+entry.result.profile.activity:''}{entry.result.profile.time?' · '+entry.result.profile.time:''}{entry.result.profile.group?' · '+entry.result.profile.group:''}</>}</span>{index===conversation.length-1&&<button disabled={!speech.canSpeak} onClick={()=>speech.speaking?speech.stopSpeaking():speech.speak(entry.result.reply)}><Glyph name={speech.speaking?'stop':'speaker'} size={16}/>{speech.speaking?'停止朗讀':'朗讀回答'}</button>}</div>
     <div aria-live={index===conversation.length-1?'polite':'off'}><Answer result={entry.result}/></div>
    </div>)}
    {busy&&<div className="aw-user-question aw-pending-question"><span>你</span><p>{pendingQuestion}</p></div>}

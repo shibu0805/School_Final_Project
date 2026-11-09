@@ -2,6 +2,7 @@ import { getStations,get_historical_aqi,get_weather_forecast,find_nearest_statio
 import { get_health_guidelines,analyze_air_quality,assessActivity } from './guidelines.mjs';
 import {summarizeCounties,countyNames,aqiGrade} from '../shared/air-quality.mjs';
 import {generateRecommendations} from './recommendations.mjs';
+import {isAirQualityMessage,unrecognizedMessage} from '../shared/message-intent.mjs';
 export const groups=['一般民眾','兒童','長者','心肺疾病敏感族群','孕婦'];
 export const activities=['散步','慢跑','跑步','騎腳踏車','戶外遊戲','其他戶外活動'];
 export const counties=countyNames;
@@ -70,6 +71,10 @@ async function modelIntent(provider,message,context){
 }
 export async function runAgent(input){
  const began=performance.now(),trace=[];const mode=input.mode==='demo'?'demo':'live';const provider=['gemini','ollama'].includes(input.provider)?input.provider:'rules';let warning=null;
+ // 先檢核本輪訊息，避免亂碼或離題內容透過舊 Profile 重播上一輪評估。
+ if(!isAirQualityMessage(input.message,input.profile||{}))return {
+  ...unrecognizedMessage(input.profile),question:input.message,trace,provider:'rules',warning:null,mode,elapsed:Math.round(performance.now()-began)
+ };
  async function tool(name,fn){const t=performance.now();try{const result=await fn();trace.push({name,status:'ok',ms:Math.round(performance.now()-t),summary:Array.isArray(result)?`${result.length} 筆資料`:result?.status||'完成'});return result;}catch(e){trace.push({name,status:'error',ms:Math.round(performance.now()-t),summary:name==='intent_parser'?'模型無法使用':e.message});throw e;}}
  let profile=parseIntent(input.message,input.profile||{}),modelPlan={};
  if(provider!=='rules'){try{const parsed=await tool('intent_parser',()=>modelIntent(provider,input.message,profile));const {needsWeather,needsHistory,time:ignoredModelTime,...fields}=parsed;modelPlan={needsWeather,needsHistory};profile=parseIntent(input.message,{...profile,...fields});}catch(e){warning=e.message.includes('改用')?e.message:'模型連線或輸出格式異常，改用規則工具流程。';}}

@@ -23,6 +23,24 @@ test('無資料縣市灰色且清楚顯示暫無資料',async()=>{render(<App/>)
 test('官方 API 失敗不保留先前展示顏色',async()=>{render(<App/>);await screen.findByRole('button',{name:/臺中市，縣市測站最高/});offline=true;fireEvent.change(screen.getByLabelText('資料模式'),{target:{value:'demo'}});await screen.findByText('金鑰未設定');expect(screen.getByRole('button',{name:'臺中市，暫無資料'}).getAttribute('fill')).toBe('#c3ccd1');});
 test('可直接進入顧問，沒有地點時自然詢問，不顯示個人資料表',async()=>{await advisor();expect((screen.getByLabelText('顧問目前縣市') as HTMLSelectElement).value).toBe('');fireEvent.change(screen.getByLabelText('輸入出門問題'),{target:{value:'適合出去跑步嗎？'}});fireEvent.click(screen.getByLabelText('送出問題'));await screen.findByText('你打算在哪個縣市活動呢？');expect(screen.queryByLabelText('使用者族群')).toBeNull();});
 test('簡潔分區回答與詳細分析預設收合；追問保留上下文',async()=>{await advisor();fireEvent.change(screen.getByLabelText('輸入出門問題'),{target:{value:'今天台中適合跑步嗎？'}});fireEvent.click(screen.getByLabelText('送出問題'));await screen.findByText('適合');expect(screen.getByText('目前狀況')).toBeTruthy();expect(screen.getByText('建議做法')).toBeTruthy();expect(screen.getByText('詳細分析').closest('details')?.open).toBe(false);fireEvent.change(screen.getByLabelText('輸入出門問題'),{target:{value:'那如果我是氣喘患者呢？'}});fireEvent.click(screen.getByLabelText('送出問題'));await waitFor(()=>expect(requests.length).toBe(2));expect(requests[1].profile.county).toBe('臺中市');expect(requests[1].profile.activity).toBe('跑步');expect(requests[1].profile.time).toBe('今天');});
+test('前端攔截截圖中的反斜線 qqq，不呼叫舊後端、不重播舊卡片且仍可接續追問',async()=>{
+ await advisor();
+ fireEvent.change(screen.getByLabelText('輸入出門問題'),{target:{value:'今天台中適合跑步嗎？'}});fireEvent.click(screen.getByLabelText('送出問題'));
+ await screen.findByText('適合');expect(requests).toHaveLength(1);
+ // 此 mock 若收到亂碼仍會回舊評估，模擬尚未更新的後端。
+ for(const [i,message] of ['\\qqq','asdfghjkl','今天晚餐吃什麼？'].entries()){
+  fireEvent.change(screen.getByLabelText('輸入出門問題'),{target:{value:message}});fireEvent.click(screen.getByLabelText('送出問題'));
+  expect(requests).toHaveLength(1);expect(screen.getAllByRole('article',{name:'AI 評估結果'})).toHaveLength(1);
+  const turns=document.querySelectorAll('.aw-chat-turn');expect(turns).toHaveLength(i+2);
+  const latest=turns[turns.length-1] as HTMLElement;
+  expect(within(latest).getByText(/我沒有理解這次的問題/)).toBeTruthy();
+  expect(within(latest).getByText('待補充問題')).toBeTruthy();
+  expect(within(latest).queryByRole('article')).toBeNull();expect(within(latest).queryByText(/本次條件/)).toBeNull();
+ }
+ fireEvent.change(screen.getByLabelText('輸入出門問題'),{target:{value:'那如果我是氣喘患者呢？'}});fireEvent.click(screen.getByLabelText('送出問題'));
+ await waitFor(()=>expect(screen.getAllByRole('article',{name:'AI 評估結果'})).toHaveLength(2));
+ expect(requests).toHaveLength(2);expect(requests[1].profile.county).toBe('臺中市');expect(requests[1].profile.activity).toBe('跑步');
+});
 test('不支援 SpeechRecognition 時顯示提示與可用文字輸入',async()=>{await advisor();expect(screen.getByText('此瀏覽器不支援語音辨識，可直接輸入文字')).toBeTruthy();fireEvent.click(screen.getByLabelText('開始語音提問'));expect(screen.getByRole('alert').textContent).toContain('未提供 Speech Recognition');expect(screen.getByLabelText('輸入出門問題')).toBeTruthy();});
 function installRecognition(){Object.defineProperty(window,'webkitSpeechRecognition',{configurable:true,value:class{lang='';continuous=false;interimResults=false;maxAlternatives=1;onstart:any;onresult:any;onerror:any;onend:any;constructor(){recognition=this;}start(){this.onstart?.();}stop(){this.onend?.();}abort(){}}});}
 test('麥克風辨識繁體中文、顯示結果並送到原 Agent',async()=>{installRecognition();await advisor();fireEvent.click(screen.getByLabelText('開始語音提問'));expect(recognition.lang).toBe('zh-TW');expect(screen.getByLabelText('停止聆聽')).toBeTruthy();await act(async()=>{recognition.onresult({resultIndex:0,results:[Object.assign([{transcript:'今天台中適合跑步嗎？'}],{isFinal:true})]});});await screen.findByText('辨識結果：今天台中適合跑步嗎？');expect(requests[0].message).toBe('今天台中適合跑步嗎？');expect(screen.getByText('適合')).toBeTruthy();});

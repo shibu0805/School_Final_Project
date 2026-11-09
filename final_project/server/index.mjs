@@ -6,13 +6,14 @@ import {getStations,get_historical_aqi,get_weather_forecast,find_nearest_station
 import {runAgent} from './agent.mjs';
 import {guidelines} from './guidelines.mjs';
 import {summarizeCounties,countyRule} from '../shared/air-quality.mjs';
+import {CHAT_INTENT_VERSION} from '../shared/message-intent.mjs';
 const root=resolve(fileURLToPath(new URL('../dist/',import.meta.url)));
 const server=http.createServer(async(req,res)=>{
  res.setHeader('X-Content-Type-Options','nosniff');
  const url=new URL(req.url,'http://localhost');const mode=url.searchParams.get('mode')==='demo'?'demo':'live';
  const json=(data,status=200)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'});res.end(JSON.stringify(data));};
  try{
-  if(url.pathname==='/api/status')return json({air:!!process.env.MOENV_API_KEY,weather:!!process.env.CWA_API_KEY,gemini:!!process.env.GEMINI_API_KEY,ollama:'需啟動本機服務',version:'1.0.0'});
+  if(url.pathname==='/api/status')return json({air:!!process.env.MOENV_API_KEY,weather:!!process.env.CWA_API_KEY,gemini:!!process.env.GEMINI_API_KEY,ollama:'需啟動本機服務',version:'1.0.0',chatIntentVersion:CHAT_INTENT_VERSION});
   if(url.pathname==='/api/stations')return json({stations:await getStations(mode)});
   if(url.pathname==='/api/counties')return json({counties:summarizeCounties(await getStations(mode),{mode}),rule:countyRule,generatedAt:new Date().toISOString(),mode});
   if(url.pathname==='/api/history')return json({history:get_historical_aqi(url.searchParams.get('station'),Math.min(72,Math.max(1,Number(url.searchParams.get('hours'))||24)),mode)});
