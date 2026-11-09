@@ -1,5 +1,5 @@
 {
-  "name": "airwise-agent", "version": "1.0.0", "private": true, "type": "module",
+  "name": "airwise-agent", "version": "1.0.0", "private": true, "type": "module", "engines": {"node": ">=24"},
   "scripts": {"dev": "node server/dev.mjs", "build": "tsc --noEmit && vite build", "start": "node --env-file-if-exists=.env server/index.mjs", "test": "node --env-file=tests/test.env --test tests/*.test.mjs", "test:ui":"vitest run tests/ui.test.tsx tests/experience.test.tsx --environment jsdom"},
   "dependencies": {"react": "^19.2.0", "react-dom": "^19.2.0", "recharts": "^3.3.0"},
   "devDependencies": {"@testing-library/react":"^16.3.3","vitest":"^5.0.5","jsdom":"^30.1.3","@tailwindcss/vite": "^4.1.0", "@types/react": "^19.2.0", "@types/react-dom": "^19.2.0", "@vitejs/plugin-react": "^5.1.0", "tailwindcss": "^4.1.0", "typescript": "^5.9.3", "vite": "^7.2.0"}
