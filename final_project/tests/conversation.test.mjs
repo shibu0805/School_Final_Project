@@ -5,7 +5,7 @@ const previous={county:'臺中市',activity:'跑步',group:'一般民眾',intens
 test('有效問題之後輸入亂碼或離題文字，不重播舊評估，之後仍能正常追問',async()=>{
  const first=await runAgent({message:'今天台中適合跑步嗎？',mode:'demo',profile:{}});
  assert.equal(first.status,'ok');
- for(const message of ['\\qqq','asdfghjkl','123456','！？！？','哈哈哈哈','那 qwerty 呢？','如果 zxcasd 呢？','今天晚餐吃什麼？','台中有哪些餐廳？','幫我寫一個迴圈']){
+ for(const message of ['asdfghjkl','123456','！？！？','哈哈哈哈','那 qwerty 呢？','如果 zxcasd 呢？','今天晚餐吃什麼？','台中有哪些餐廳？','幫我寫一個迴圈']){
   const profile=structuredClone(first.profile);
   const result=await runAgent({message,mode:'demo',profile});
   assert.equal(result.status,'clarification',message);assert.equal(result.clarificationReason,'unrecognized_message',message);

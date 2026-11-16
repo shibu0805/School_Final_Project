@@ -2,7 +2,7 @@
 
 ## 本輪訊息檢核
 
-前端送出訊息及後端進入模型解析或資料工具前，共用 `shared/message-intent.mjs` 檢查本輪是否含可辨識的空品、戶外活動、相關族群問題，或明確的地點／時間／時長補充。舊 Profile 或「那／如果／呢」字樣本身不構成有效意圖。亂碼與無關問題回傳 `status: clarification`、`clarificationReason: unrecognized_message`，不查詢資料、不呼叫模型、不輸出舊 AQI 或評估卡，也不改寫原 Profile。前端會直接顯示補充提示，不向舊後端送出這類輸入。接著正常追問仍可延續原條件。此為受控規則檢核，未涵蓋所有自然語言表達。`/api/status` 的 `chatIntentVersion` 用於辨識線上後端是否已更新。
+進入模型解析或資料工具前，先由 `server/message-intent.mjs` 檢查本輪是否含可辨識的空品、戶外活動、相關族群問題，或明確的地點／時間／時長補充。舊 Profile 或「那／如果／呢」字樣本身不構成有效意圖。亂碼與無關問題回傳 `status: clarification`、`clarificationReason: unrecognized_message`，不查詢資料、不呼叫模型、不輸出舊 AQI 或評估卡，也不改寫原 Profile。接著正常追問仍可延續原條件。此為受控規則檢核，未涵蓋所有自然語言表達。
 
 ## 情境建議選擇（2026-11-07）
 
