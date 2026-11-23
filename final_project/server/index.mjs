@@ -7,12 +7,21 @@ import {runAgent} from './agent.mjs';
 import {guidelines} from './guidelines.mjs';
 import {summarizeCounties,countyRule} from '../shared/air-quality.mjs';
 import {CHAT_INTENT_VERSION} from '../shared/message-intent.mjs';
+import {checkConnection} from './connections.mjs';
 const root=resolve(fileURLToPath(new URL('../dist/',import.meta.url)));
 const server=http.createServer(async(req,res)=>{
  res.setHeader('X-Content-Type-Options','nosniff');
+ res.setHeader('X-Airwise-Intent-Version',CHAT_INTENT_VERSION);
  const url=new URL(req.url,'http://localhost');const mode=url.searchParams.get('mode')==='demo'?'demo':'live';
  const json=(data,status=200)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'});res.end(JSON.stringify(data));};
  try{
+  if(url.pathname==='/api/connections'&&req.method==='POST'){
+   const origin=req.headers.origin;
+   if(origin&&(!['http://127.0.0.1:5173','http://localhost:5173'].includes(origin)&&new URL(origin).host!==req.headers.host))return json({error:'來源不允許'},403);
+   const service=url.searchParams.get('service');
+   if(!['air','weather','gemini'].includes(service))return json({error:'未知的服務'},400);
+   return json(await checkConnection(service));
+  }
   if(url.pathname==='/api/status')return json({air:!!process.env.MOENV_API_KEY,weather:!!process.env.CWA_API_KEY,gemini:!!process.env.GEMINI_API_KEY,ollama:'需啟動本機服務',version:'1.0.0',chatIntentVersion:CHAT_INTENT_VERSION});
   if(url.pathname==='/api/stations')return json({stations:await getStations(mode)});
   if(url.pathname==='/api/counties')return json({counties:summarizeCounties(await getStations(mode),{mode}),rule:countyRule,generatedAt:new Date().toISOString(),mode});
@@ -29,11 +38,12 @@ const server=http.createServer(async(req,res)=>{
    let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>24000)return json({error:'請縮短訊息內容'},413);}
    let input;try{input=JSON.parse(raw);}catch{return json({error:'JSON 格式錯誤'},400);}
    if(typeof input.message!=='string'||!input.message.trim()||input.message.length>4000)return json({error:'請輸入 1–4000 字問題'},400);
-   return json(await runAgent(input));
+   return json({...await runAgent(input),intentVersion:CHAT_INTENT_VERSION});
   }
   if(url.pathname.startsWith('/api/'))return json({error:'找不到 API'},404);
   const path=resolve(root,'.'+decodeURIComponent(url.pathname));if(path!==root&&!path.startsWith(root+sep))return json({error:'無效路徑'},403);
   const target=extname(path)?path:resolve(root,'index.html');
+  if(extname(target)==='.html')res.setHeader('Cache-Control','no-store');
   try{const body=await readFile(target);res.writeHead(200,{'content-type':({'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.geojson':'application/geo+json; charset=utf-8','.json':'application/json; charset=utf-8'})[extname(target)]||'application/octet-stream'});res.end(body);}catch{json({error:'請先執行 npm run build，或使用 npm run dev 開發模式。'},404);}
  }catch(e){json({error:e.message?.includes('MOENV')||e.message?.startsWith('環境部')?e.message:'資料服務暫時無法使用，請檢查連線與設定後重試。'},503);}
 });

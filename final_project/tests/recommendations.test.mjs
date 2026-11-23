@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {generateRecommendations} from '../server/recommendations.mjs';
 import {get_health_guidelines,assessActivity} from '../server/guidelines.mjs';
 import {runAgent} from '../server/agent.mjs';
-const profile={county:'臺中市',activity:'跑步',group:'一般民眾',intensity:'高',duration:30,time:'現在'};
+const profile={activitySource:'explicit',county:'臺中市',activity:'跑步',group:'一般民眾',intensity:'高',duration:30,time:'現在'};
 const station={aqi:120,pollutant:'PM2.5',stale:false};
 function recommend(message,p=profile,s=station,extra={}){return generateRecommendations({message,profile:p,station:s,assessment:assessActivity(s,p),guideline:get_health_guidelines(s.aqi,p.group),...extra});}
 test('跑步與散步依不同活動產生不同做法',()=>{const running=recommend('適合跑步嗎？'),walking=recommend('適合散步嗎？',{...profile,activity:'散步',intensity:'低'});assert.notDeepEqual(running.actions,walking.actions);assert(running.actions.some(s=>s.includes('慢跑或步行')));assert(walking.actions.some(s=>s.includes('輕鬆步調')));});
@@ -17,4 +17,14 @@ test('只有取得天氣資料時才引用降雨可能',()=>{const r=recommend('
 test('未來不足不給現在適合的結論，也不造最佳時間',()=>{const r=recommend('明天幾點適合跑步？',profile,station,{assessment:{status:'insufficient'},future:true});assert(r.actions.some(s=>s.includes('沒有可信的未來')));assert(!r.actions.some(s=>s.includes('可依原定')));});
 test('缺值只給補充資料與防護限制，不捏造污染物',()=>{const r=recommend('空品沒資料還要戴口罩嗎？',profile,{...station,aqi:null,pollutant:null},{assessment:{status:'insufficient'}});assert(r.actions.some(s=>s.includes('沒有可靠')));assert(!r.actions.some(s=>s.includes('這次指標污染物')));});
 test('相同輸入可重現，每次最多三點且不重複',()=>{const a=recommend('現在可以跑步嗎？');assert.deepEqual(a,recommend('現在可以跑步嗎？'));assert(a.actions.length<=3);assert.equal(new Set(a.actions).size,a.actions.length);assert(a.recommendations.every(r=>r.reason&&r.source&&r.kind));});
+test('未指定活動的明日預報不固定套跑步，天氣問題優先回答天氣',()=>{
+ const forecast={status:'live',area:'中部',source:'https://data.moenv.gov.tw/dataset/detail/aqf_p_01'};
+ const general={...profile,activity:'其他戶外活動',activitySource:'unspecified',intensity:'低'};
+ const plain=recommend('明天適合去台中嗎？',general,station,{future:true,forecast});
+ const rain=recommend('明天下雨還能去台中嗎？',general,station,{future:true,forecast,weather:{periods:[{description:'多雲短暫雨',pop:60}]}});
+ assert(!plain.actions.some(s=>/跑步|慢跑|原定/.test(s)));
+ assert(plain.actions.some(s=>s.includes('中部空品區預報')));
+ assert.equal(rain.recommendations[0].id,'weather-plan');assert.notDeepEqual(plain.actions,rain.actions);
+ assert(!plain.actions.some(s=>s.includes('只能依現有觀測')));
+});
 test('整合 Agent 問跑步、口罩與替代活動會改變建議並通過驗證',async()=>{const a=await runAgent({mode:'demo',profile,message:'現在適合跑步嗎？'}),b=await runAgent({mode:'demo',profile,message:'現在出門要戴口罩嗎？'}),c=await runAgent({mode:'demo',profile,message:'可以改成什麼室內活動？'});assert.notDeepEqual(a.actions,b.actions);assert.notDeepEqual(b.actions,c.actions);for(const r of [a,b,c]){assert(r.validation.passed);assert(r.trace.some(t=>t.name==='generate_recommendations'));assert.equal(r.details.recommendations.length,r.actions.length);}});

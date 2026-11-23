@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {level,get_health_guidelines,analyze_air_quality} from '../server/guidelines.mjs';
 import {number,normalize,demoStations,getStations,get_weather_forecast,get_historical_aqi,find_nearest_stations} from '../server/data.mjs';
 import {parseIntent,validateProfile,validate_response,compare_activity_time_slots,runAgent} from '../server/agent.mjs';
-const p={county:'臺中市',group:'一般民眾',activity:'慢跑',intensity:'中',duration:30,time:'現在'};
+const p={activitySource:'explicit',county:'臺中市',group:'一般民眾',activity:'慢跑',intensity:'中',duration:30,time:'現在'};
 const s=demoStations()[0];
 for(const [aqi,label] of [[0,'良好'],[50,'良好'],[51,'普通'],[100,'普通'],[101,'對敏感族群不健康'],[150,'對敏感族群不健康'],[151,'對所有族群不健康'],[200,'對所有族群不健康'],[201,'非常不健康'],[300,'非常不健康'],[301,'危害'],[500,'危害']])test(`官方 AQI 分級邊界 ${aqi}`,()=>assert.equal(level(aqi).label,label));
 test('缺值和不合法 AQI 不判定',()=>{for(const n of [null,undefined,NaN,-1,501])assert.equal(level(n),null);});

@@ -34,10 +34,10 @@ export function extractStationRecords(body){
  if(!Array.isArray(records)||!records.length)throw new Error('環境部未回傳測站資料。');
  return records;
 }
-export async function getStations(mode='live',fetcher=fetch){
+export async function getStations(mode='live',fetcher=fetch,{force=false}={}){
  if(mode==='demo')return demoStations();
  if(!process.env.MOENV_API_KEY)throw new Error('尚未設定 MOENV_API_KEY。請設定 .env，或切換「展示模式」。');
- if(cache.stations.length&&Date.now()-cache.at<300_000)return cache.stations;
+ if(!force&&cache.stations.length&&Date.now()-cache.at<300_000)return cache.stations;
  const url=new URL('https://data.moenv.gov.tw/api/v2/aqx_p_432');url.search=new URLSearchParams({api_key:process.env.MOENV_API_KEY,limit:'1000',format:'json'});
  const res=await fetcher(url,{signal:AbortSignal.timeout(15000)});if(!res.ok)throw new Error('環境部資料服務暫時無法使用，請檢查金鑰或稍後重試。');
  const records=extractStationRecords(await res.json());
