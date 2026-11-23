@@ -4,6 +4,23 @@ import {parseIntent,runAgent} from '../server/agent.mjs';
 import {isAirQualityMessage as frontendIntent,findCounty} from '../shared/message-intent.mjs';
 import {isAirQualityMessage as backendIntent} from '../server/message-intent.mjs';
 const previous={activitySource:'explicit',county:'臺中市',activity:'跑步',group:'一般民眾',intensity:'高',duration:30,time:'明天',timeDetail:'早上'};
+test('截圖原句「我明天要去宜蘭適合嗎」不被前置檢核擋住',async()=>{
+ const message='我明天要去宜蘭適合嗎';
+ assert.equal(frontendIntent(message),true);assert.equal(backendIntent(message),true);
+ const result=await runAgent({message,profile:{},mode:'demo'});
+ assert.notEqual(result.status,'clarification');assert.equal(result.profile.county,'宜蘭縣');assert.equal(result.profile.time,'明天');
+ assert.equal(result.profile.activitySource,'unspecified');assert(result.trace.some(t=>t.name==='get_air_forecast'));assert(result.trace.some(t=>t.name==='get_weather_forecast'));
+ assert(!result.actions.some(text=>/跑步|慢跑/.test(text)));
+});
+test('自然旅行說法不必逐字命中詞表，並保留新問題的時間規則',()=>{
+ for(const message of ['我明天要去宜蘭適合嗎','我預計明天前往宜蘭，合適嗎？','明天打算到宜蘭走走，適不適合？','我明天想去宜蘭拍照，可以嗎？','明天宜蘭適合旅行嗎','可以幫忙確認明天去宜蘭的狀況嗎']){
+  assert.equal(frontendIntent(message),true,message);assert.equal(backendIntent(message),true,message);
+  assert.equal(parseIntent(message).county,'宜蘭縣',message);assert.equal(parseIntent(message).time,'明天',message);
+ }
+ const fresh=parseIntent('台北適合散步嗎？',previous);assert.equal(fresh.time,'現在');assert.equal(fresh.timeDetail,undefined);
+ for(const message of ['明天從台北去宜蘭適合嗎','本來要去台中，明天改到宜蘭可以嗎']){assert.equal(frontendIntent(message),true,message);assert.equal(parseIntent(message).county,'宜蘭縣',message);}
+ for(const message of ['宜蘭有哪些餐廳','明天宜蘭的股價如何','我明天要去宜蘭 qwerty','我明天要去 qwerty 適合嗎'])assert.equal(frontendIntent(message,previous),false,message);
+});
 test('換地點的出行句型可泛用於所有縣市，保留對話條件',()=>{
  const templates=[name=>`那去${name}呢`,name=>`那適合去${name}嗎`,name=>`那去${name}適合嗎`,name=>`${name}適合去嗎`,name=>`那${name}還能去嗎`,name=>`如果改到${name}會不會比較好`,name=>`是否可以改去${name}`,name=>`那如果去${name}呢？`,name=>`改去${name}的話呢`,name=>`我想換到${name}可以嗎`,name=>`接下來前往${name}好不好`,name=>`那我們明天去${name}呢`,name=>`請幫我看看${name}的狀況`];
  const places=['臺北市','新北市','桃園市','臺中市','臺南市','高雄市','基隆市','新竹市','新竹縣','苗栗縣','彰化縣','南投縣','雲林縣','嘉義市','嘉義縣','屏東縣','宜蘭縣','花蓮縣','臺東縣','澎湖縣','金門縣','連江縣','彰化'];

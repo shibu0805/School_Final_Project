@@ -18,6 +18,20 @@ beforeEach(()=>{requests=[];offline=false;recognition=null;utterance=null;localS
  return {ok,json:async()=>data};
  }));Object.defineProperty(window,'SpeechRecognition',{configurable:true,value:undefined});Object.defineProperty(window,'webkitSpeechRecognition',{configurable:true,value:undefined});Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{cancel:vi.fn(),getVoices:()=>[{lang:'zh-TW',name:'中文'}],speak:vi.fn(u=>{utterance=u;u.onstart?.();})}});vi.stubGlobal('SpeechSynthesisUtterance',class{lang='';rate=1;voice=null;onstart:any;onend:any;onerror:any;constructor(public text:string){}});});
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+test('截圖原句「我明天要去宜蘭適合嗎」送至後端並呈現明日結果',async()=>{
+ const original=vi.mocked(fetch).getMockImplementation()!;
+ vi.mocked(fetch).mockImplementation(async(input:any,options:any)=>{
+  if(String(input).includes('/chat')){
+   const request=JSON.parse(options.body);requests.push(request);
+   const result=mockResult({...request,profile:{county:'宜蘭縣'}});
+   return {ok:true,json:async()=>({...result,profile:{...result.profile,county:'宜蘭縣',time:'明天',activity:'其他戶外活動',activitySource:'unspecified'},assessment:{status:'insufficient',label:'目前沒有可用的明日預報',reason:'請稍後查詢。'},actions:['接近出門時間再確認空品。']})} as Response;
+  }
+  return original(input,options);
+ });
+ await advisor();fireEvent.change(screen.getByLabelText('輸入出門問題'),{target:{value:'我明天要去宜蘭適合嗎'}});fireEvent.click(screen.getByLabelText('送出問題'));
+ await screen.findByRole('article',{name:'AI 評估結果'});expect(requests[0].message).toBe('我明天要去宜蘭適合嗎');
+ expect((screen.getByLabelText('顧問目前縣市') as HTMLSelectElement).value).toBe('宜蘭縣');expect(screen.queryByText(/我沒有理解這次的問題/)).toBeNull();
+});
 test('建議區可切換真正的 Gemini 生成，並保存後續模型選擇',async()=>{
  const original=vi.mocked(fetch).getMockImplementation()!;
  vi.mocked(fetch).mockImplementation(async(input:any,options:any)=>{

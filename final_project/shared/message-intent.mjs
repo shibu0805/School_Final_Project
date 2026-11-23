@@ -1,13 +1,21 @@
 import {countyNames} from './air-quality.mjs';
 
-export const CHAT_INTENT_VERSION='2026-11-22.6';
+export const CHAT_INTENT_VERSION='2026-11-23.1';
 // 縣內城市使用所屬縣的資料；獨立的縣轄市名稱不能只移除縣名後留下「市」。
 const cityAliases={'彰化市':'彰化縣','屏東市':'屏東縣','苗栗市':'苗栗縣','南投市':'南投縣','宜蘭市':'宜蘭縣','花蓮市':'花蓮縣','臺東市':'臺東縣'};
 const placeNames=[...countyNames.map(county=>({name:county,county})),...Object.entries(cityAliases).map(([name,county])=>({name,county})),...countyNames.map(county=>({name:county.slice(0,-1),county}))].sort((a,b)=>b.name.length-a.name.length);
+function mentionedPlaces(text){
+ const found=[];
+ for(let index=0;index<text.length;index++){
+  const place=placeNames.find(place=>text.startsWith(place.name,index));
+  if(place){found.push({...place,index});index+=place.name.length-1;}
+ }
+ return found;
+}
 export function findCounty(message){
  if(typeof message!=='string')return undefined;
  const text=message.normalize('NFKC').replaceAll('台','臺');
- return placeNames.find(place=>text.includes(place.name))?.county;
+ return mentionedPlaces(text).at(-1)?.county;
 }
 export function unrecognizedMessage(profile={}){
  return {
@@ -17,9 +25,20 @@ export function unrecognizedMessage(profile={}){
  };
 }
 
-// 地點、出行、評估與語助詞可自由換序；未知內容不會因為包含地名而被放行。
+// 已知地點搭配出行／評估語意即可查詢，不要求句子中的每個字都在詞表。
+function destinationQuestion(text){
+ const place=mentionedPlaces(text).at(-1);
+ if(!place)return false;
+ const after=text.slice(place.index+place.name.length);
+ if(!/[縣市]$/.test(place.name)&&/^[縣市]/.test(after))return false;
+ if(/[a-z]/i.test(text)||/餐廳|美食|吃飯|晚餐|早餐|午餐|股票|股價|買房|住宿|飯店|旅館|寫程式/.test(text))return false;
+ return /去|前往|出發|改到|換到|旅行|旅遊|遊玩|拜訪|適合|合適|適宜|可否|是否|能否|能不能|可以|狀況|情況|如何|怎麼樣|好不好/.test(text);
+}
+
+// 簡短地點補充仍接受語助詞與時間；這不是一般出行問句的必要詞表。
 const locationWords=['那麼','那','如果','假如','要是','若','所以','接下來','接著','再來','改成','換成','改為','換到','改到','換去','改去','改問','換問','我們','我','想要','想','請問','請','幫我','再','也','先','打算','計畫','準備','可能','還是','知道','了解','查詢','查一下','查看','查','看一下','看看','看','問一下','問問','問','去到','前往','去','到','住在','在','地點','位置','的話','的','空氣品質','空氣','空品','狀況','情況','怎麼樣','如何','適不適合','適合','合適','適宜','可以','安全','可不可以','能不能','行不行','好不好','會不會','有沒有','比較好','好一點','較好','可行','是否','可否','同樣','一樣','仍然','還','是','不','會','能','行','一下','呢','嗎','啊','呀','吧'].sort((a,b)=>b.length-a.length);
 function locationCondition(text){
+ if(destinationQuestion(text))return true;
  let remaining=text.replace(/[\s\p{P}\p{S}]/gu,''),hasCounty=false;
  for(const {name} of placeNames){
   if(remaining.includes(name)){hasCounty=true;remaining=remaining.replaceAll(name,'@');}
@@ -32,7 +51,10 @@ function locationCondition(text){
 }
 
 export function isLocationFollowup(message,context={}){
- return typeof message==='string'&&countyNames.includes(context.county)&&locationCondition(message.normalize('NFKC').replaceAll('台','臺').trim());
+ if(typeof message!=='string'||!countyNames.includes(context.county))return false;
+ const text=message.normalize('NFKC').replaceAll('台','臺').trim();
+ // 直接提出具體活動的新問題仍由主解析器判斷是否為延續追問。
+ return !/跑步|慢跑|散步|騎腳踏車|戶外遊戲|其他戶外活動/.test(text)&&locationCondition(text);
 }
 
 // 有舊 Profile 不代表本輪一定是空品提問；「那／如果／呢」本身也不是有效意圖。
